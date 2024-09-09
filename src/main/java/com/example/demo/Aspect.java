@@ -1,5 +1,9 @@
 package com.example.demo;
 
+import eu.wdaqua.qanary.commons.triplestoreconnectors.QanaryTripleStoreConnector;
+import eu.wdaqua.qanary.commons.triplestoreconnectors.QanaryTripleStoreConnectorVirtuoso;
+import eu.wdaqua.qanary.exceptions.SparqlQueryFailed;
+import org.apache.jena.query.Query;
 import org.apache.jena.rdf.model.*;
 import org.apache.jena.rdf.model.impl.BagImpl;
 import org.apache.jena.vocabulary.OA;
@@ -11,94 +15,80 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import virtuoso.jena.driver.VirtModel;
 
+import java.io.IOException;
 import java.io.StringWriter;
 import java.util.UUID;
 
 @org.aspectj.lang.annotation.Aspect
 public class Aspect {
 
+    private QanaryTripleStoreConnectorVirtuoso qanaryTripleStoreConnectorVirtuoso = new QanaryTripleStoreConnectorVirtuoso("jdbc:virtuoso://localhost:1111", "dba", "dba", 10);
     Logger logger = LoggerFactory.getLogger(Aspect.class);
-    Model model;
     private String PROV_O_NAMESPACE = "http://www.w3.org/ns/prov#";
     private String SIO_NAMESPACE = "http://semanticscience.org/ontology/sio.owl#";
-    private String QANARY_NAMESPACE = "";
+    private String QANARY_NAMESPACE = "http://qanary#";
     private Property rdfType = RDF.type;
-    private Property wasGeneratedBy = model.createProperty(PROV_O_NAMESPACE, "wasGeneratedBy");
-    private Property hasDataItem = model.createProperty(SIO_NAMESPACE, "hasDataItem");
-    private Property hasExplanation = model.createProperty(QANARY_NAMESPACE, "hasExplanation");
-    private Property subComponentOf = model.createProperty(QANARY_NAMESPACE, "subComponentOf");
-    private Property rdfValue = model.createProperty(RDF.getURI(), "value");
-    private Property annotatedAt = model.createProperty(OA.getURI(),"annotatedAt");
-    private Property actedOnBehalfOf = model.createProperty(PROV_O_NAMESPACE, "actedOnBehalfOf");
+    private Property wasGeneratedBy = ResourceFactory.createProperty(PROV_O_NAMESPACE, "wasGeneratedBy");
+    private Property hasDataItem = ResourceFactory.createProperty(SIO_NAMESPACE, "hasDataItem");
+    private Property hasExplanation = ResourceFactory.createProperty(QANARY_NAMESPACE, "hasExplanation");
+    private Property rdfValue = ResourceFactory.createProperty(RDF.getURI(), "value");
+    private Property annotatedAt = ResourceFactory.createProperty(OA.getURI(),"annotatedAt");
+    private Property actedOnBehalfOf = ResourceFactory.createProperty(PROV_O_NAMESPACE, "actedOnBehalfOf");
     private String graph;
 
     public Aspect() {
-
     }
 
     public void setupModel() {
-        this.graph = UUID.randomUUID().toString();
-        this.model.setNsPrefix("rdf", RDF.getURI());
-        this.model.setNsPrefix("qa", QANARY_NAMESPACE);
-        this.model.setNsPrefix("prov", PROV_O_NAMESPACE);
-        this.model.setNsPrefix("sio", SIO_NAMESPACE);
-        this.model.setNsPrefix("oa", OA.getURI());
-        VirtModel.openDatabaseModel(graph, "jdbc:virtuoso://localhost:1111", "dba", "dba");
-
     }
 
     @AfterReturning(value = "execution(* com.example..*(..))", returning = "result")
-    public void logBeforeMethod(JoinPoint joinPoint, Object result) {
-        setupModel();
-        // Get the method name being executed
-        String currentMethod = joinPoint.getSignature().getName();
+    public void logBeforeMethod(JoinPoint joinPoint, Object result) throws IOException, SparqlQueryFailed {
+        // Create an empty model
+        Model model = ModelFactory.createDefaultModel();
 
         // Retrieve the stack trace to find the caller method
         StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
 
-        // The calling method should be at index 3 in the stack trace
-        // (Index 0 is getStackTrace, 1 is this method, 2 is the current method, and 3 is the caller method)
-        if (stackTrace.length > 3) {
-            String callerMethod = stackTrace[3].getMethodName();
-            System.out.println("Caller method: " + callerMethod);
-        } else {
-            System.out.println("No caller method found in the stack trace.");
-        }
-
+        // Create resources and properties
         Resource annotationId = model.createResource(UUID.randomUUID().toString());
-        Resource method = model.createResource(currentMethod.toString());
-        Resource callerMethod = model.createResource(stackTrace[3].getMethodName().toString().replace("<", "").replace(">", ""));
+        Resource explanationType = model.createResource("TextualExplanation");
+        Resource callerMethodClass = model.createResource(stackTrace[3].getMethodName());
 
-        // Create data
-       // Bag dataBag = model.createBag();
+        // Create a blank node for the explanation
+        Resource explanationNode = model.createResource()
+                .addProperty(RDF.type, explanationType)
+                .addProperty(RDF.value, "Some explanation")
+                .addProperty(wasGeneratedBy,"GPT3.5");
 
         Resource inputData = model.createResource(RDF.li(1))
                 .addProperty(rdfType, "INPUT")
                 .addProperty(rdfValue, joinPoint.getArgs().toString());
-/*
+
         Resource outputData = model.createResource()
                 .addProperty(rdfType, "OUTPUT")
-                .addProperty(rdfValue, result == null ? "null" : result.toString());        
-        dataBag.add(inputData);
-        dataBag.add(outputData);
+                .addProperty(rdfValue, result == null ? "null" : result.toString());
 
- */
+        // Create a blank node for the Bag
+        Resource bagNode = model.createResource();  // This is a blank node
 
-     
-        Resource explanation = model.createResource()
-                .addProperty(rdfType, QANARY_NAMESPACE + "TextualExplanation")
-                .addProperty(wasGeneratedBy, "GPT_3.5")
-                .addProperty(rdfValue, "randomExplanationWithUuid" + UUID.randomUUID().toString());
+        // Add items to the Bag (using the blank node as subject)
+        bagNode.addProperty(RDF.type, RDF.Bag);
+        bagNode.addProperty(RDF.li(1), inputData);
+        bagNode.addProperty(RDF.li(2), outputData);
 
-        annotationId.addProperty(rdfType, method)
-                .addProperty(actedOnBehalfOf, callerMethod)
-                .addProperty(hasExplanation, explanation)
-                .addProperty(hasDataItem, inputData);
+        // Add the blank node as the object of another triple
+        annotationId.addProperty(RDF.type, joinPoint.getSignature().getName())
+                .addProperty(actedOnBehalfOf, callerMethodClass.toString().replace("<", "").replace(">", ""))
+                .addProperty(hasExplanation, explanationNode)
+                .addProperty(hasDataItem, bagNode);  // The blank node is reused here
 
-        StringWriter out = new StringWriter();
-        model.write(out, "TURTLE");
-        String ntriplesData = out.toString();
-        logger.info("Model as string: {}", ntriplesData);
+        // Optionally print the model in RDF/XML or TTL for debugging purposes
+        StringWriter writer = new StringWriter();
+        model.write(writer, "TTL");
+        String ttlData = writer.toString();
+        String query = QanaryTripleStoreConnector.readFileFromResources("/insert_explanation.rq").replace("?g", "<urn:graph:" + UUID.randomUUID().toString() + ">").replace("?DATA", ttlData);
+        qanaryTripleStoreConnectorVirtuoso.update(query);
     }
 
 
