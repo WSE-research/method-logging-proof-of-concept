@@ -1,4 +1,4 @@
-package com.example.demo;
+package com.example.methodLogging;
 
 import eu.wdaqua.qanary.commons.triplestoreconnectors.QanaryTripleStoreConnector;
 import eu.wdaqua.qanary.commons.triplestoreconnectors.QanaryTripleStoreConnectorVirtuoso;
@@ -61,7 +61,7 @@ public class Aspect {
         }
     }
 
-    @Before(value = "execution(* com.example.demo.Service..*(..))")
+    @Before(value = "execution(* com.example.methodLogging.Service..*(..))")
     public void storeMethodExecutionOnBegin(JoinPoint joinPoint) throws Throwable {
         String uuid = UUID.randomUUID().toString();
         if(this.stack.empty())
@@ -79,7 +79,7 @@ public class Aspect {
         qanaryTripleStoreConnectorVirtuoso.update(query);
     }
 
-    @AfterReturning(value = "execution(* com.example.demo.Service..*(..))", returning = "result")
+    @AfterReturning(value = "execution(* com.example.methodLogging.Service..*(..))", returning = "result")
     public void storeMethodExecutionAfterReturn(JoinPoint joinPoint, Object result) throws IOException, SparqlQueryFailed {
         String uuid = (String) this.stack.peek();
         LocalDateTime time = LocalDateTime.now();

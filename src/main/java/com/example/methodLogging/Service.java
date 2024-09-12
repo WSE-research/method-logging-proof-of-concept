@@ -1,4 +1,4 @@
-package com.example.demo;
+package com.example.methodLogging;
 
 @org.springframework.stereotype.Service
 public class Service {
