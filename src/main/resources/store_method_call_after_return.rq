@@ -1,0 +1,14 @@
+PREFIX sio: <http://semanticscience.org/ontology/sio.owl#>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX qa: <http://qanary#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX x: <http://placeholder#>
+
+INSERT {
+    GRAPH ?g {
+        ?methodInstance x:explanation ?explanation ;
+                        x:output ?output ;
+                        prov:endedAtTime ?endedAtTime .
+
+    }
+}
